@@ -71,7 +71,7 @@ interface Reminder {
   priority: 'low' | 'medium' | 'high';
   completed: boolean;
   responsible?: string;
-  responsibleManager?: string;
+  responsibleManagers?: string[];
 }
 
 // --- Components ---
@@ -112,7 +112,7 @@ export default function OperacionalApp() {
 
   // Form States
   const [newNote, setNewNote] = useState({ clientName: '', statusSummary: '', content: '', status: 'Starting' as ClientStatus, responsibleManager: '' });
-  const [newReminder, setNewReminder] = useState({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium' as any, responsible: '', responsibleManager: '' });
+  const [newReminder, setNewReminder] = useState({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium' as any, responsible: '', responsibleManagers: [] as string[] });
   const [newManager, setNewManager] = useState({ name: '' });
 
   // Persistence
@@ -188,7 +188,7 @@ export default function OperacionalApp() {
 
     setIsReminderFormOpen(false);
     setEditingReminderId(null);
-    setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManager: '' });
+    setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManagers: [] });
 
     // Supabase sync
     await supabase.from('reminders').upsert(reminderData);
@@ -357,7 +357,7 @@ export default function OperacionalApp() {
                   setEditingReminderId(null);
                   setEditingManagerId(null);
                   setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting', responsibleManager: '' });
-                  setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManager: '' });
+                  setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManagers: [] });
                   setNewManager({ name: '' });
                   if (activeTab === 'notes') setIsNoteFormOpen(true);
                   else if (activeTab === 'reminders') setIsReminderFormOpen(true);
@@ -509,7 +509,7 @@ export default function OperacionalApp() {
 
             {activeTab === 'reminders' && (
                 <motion.div key="rem" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="max-w-4xl mx-auto space-y-4 md:space-y-6">
-                   {reminders.sort((a,b)=>a.completed ? 1 : -1).map(rem => (
+                   {[...reminders].sort((a,b) => { if (a.completed !== b.completed) return a.completed ? 1 : -1; return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(); }).map(rem => (
                      <div key={rem.id} className={cn("glass-card p-5 md:p-8 rounded-3xl md:rounded-[40px] flex md:items-center gap-4 md:gap-8 group aura-hover", rem.completed && "opacity-40 grayscale blur-[0.5px]")}>
                         <button onClick={()=>setReminders(prev => prev.map(r => r.id===rem.id ? {...r, completed: !r.completed} : r))} className={cn("w-6 h-6 md:w-8 md:h-8 rounded-full border-2 flex items-center justify-center transition-all shrink-0 mt-1 md:mt-0", rem.completed ? "bg-emerald-500 border-emerald-500" : "border-slate-200 hover:border-emerald-500 shadow-sm")}>
                            {rem.completed && <Check className="w-3 h-3 md:w-4 md:h-4 text-white" />}
@@ -518,13 +518,17 @@ export default function OperacionalApp() {
                            <h4 className={cn("text-lg md:text-xl font-bold text-slate-900 mb-1 truncate", rem.completed && "line-through")}>{rem.title}</h4>
                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                               <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-[2px] whitespace-nowrap"><Target className="w-3 h-3 text-emerald-400" /> {rem.clientName || 'Nexus'}</div>
-                              {rem.responsibleManager && (
+                              {rem.responsibleManagers && rem.responsibleManagers.length > 0 && (
                                 <>
                                   <div className="hidden xs:block w-1 h-1 rounded-full bg-slate-200 shrink-0" />
-                                  <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold text-emerald-500 uppercase tracking-[2px] whitespace-nowrap"><User className="w-3 h-3" /> {rem.responsibleManager}</div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {rem.responsibleManagers.map((mg: string, i: number) => (
+                                      <span key={i} className="inline-flex items-center gap-1 text-[9px] md:text-[10px] font-bold text-emerald-500 uppercase tracking-[2px] whitespace-nowrap bg-emerald-50 px-2 py-0.5 rounded-full"><User className="w-3 h-3" /> {mg}</span>
+                                    ))}
+                                  </div>
                                 </>
                               )}
-                              {!rem.responsibleManager && rem.responsible && (
+                              {(!rem.responsibleManagers || rem.responsibleManagers.length === 0) && rem.responsible && (
                                 <>
                                   <div className="hidden xs:block w-1 h-1 rounded-full bg-slate-200 shrink-0" />
                                   <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold text-indigo-500 uppercase tracking-[2px] whitespace-nowrap"><User className="w-3 h-3" /> {rem.responsible}</div>
@@ -546,7 +550,7 @@ export default function OperacionalApp() {
                                  dueDate: rem.dueDate,
                                  priority: rem.priority,
                                  responsible: rem.responsible || '',
-                                 responsibleManager: rem.responsibleManager || ''
+                                 responsibleManagers: rem.responsibleManagers || []
                                });
                                setIsReminderFormOpen(true);
                              }}
@@ -594,7 +598,7 @@ export default function OperacionalApp() {
                     <div className="relative z-10 pt-6 border-t border-slate-50 flex items-center justify-between">
                        <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Responsabilidades</div>
                        <div className="flex -space-x-2">
-                          <div className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-white flex items-center justify-center text-[11px] font-bold text-emerald-600 shadow-sm">{notes.filter(n => n.responsibleManager === manager.name).length + reminders.filter(r => r.responsibleManager === manager.name).length}</div>
+                          <div className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-white flex items-center justify-center text-[11px] font-bold text-emerald-600 shadow-sm">{notes.filter(n => n.responsibleManager === manager.name).length + reminders.filter(r => r.responsibleManagers?.includes(manager.name)).length}</div>
                        </div>
                     </div>
                     <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[40px] rounded-full -z-0" />
@@ -726,16 +730,17 @@ export default function OperacionalApp() {
                 <input required placeholder="Título da Ação" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newReminder.title} onChange={e=>setNewReminder({...newReminder, title: e.target.value})} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input placeholder="Cliente (Opcional)" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm placeholder:text-slate-300" value={newReminder.clientName} onChange={e=>setNewReminder({...newReminder, clientName: e.target.value})} />
-                  <select 
-                    className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 text-xs md:text-sm appearance-none cursor-pointer"
-                    value={newReminder.responsibleManager}
-                    onChange={e => setNewReminder({...newReminder, responsibleManager: e.target.value})}
-                  >
-                    <option value="">Gestor Responsável</option>
-                    {managers.map(m => (
-                      <option key={m.id} value={m.name}>{m.name}</option>
-                    ))}
-                  </select>
+                  <div className="w-full">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Gestores Responsáveis</div>
+                    <div className="flex flex-wrap gap-2">
+                      {managers.map(m => {
+                        const isSelected = newReminder.responsibleManagers.includes(m.name);
+                        return (
+                          <button key={m.id} type="button" onClick={() => { const current = newReminder.responsibleManagers; setNewReminder({...newReminder, responsibleManagers: isSelected ? current.filter(n => n !== m.name) : [...current, m.name]}); }} className={cn("px-4 py-2.5 rounded-xl md:rounded-2xl border transition-all text-xs font-bold", isSelected ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/30")}>{m.name}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
                 <input required type="date" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm text-slate-600" value={newReminder.dueDate} onChange={e=>setNewReminder({...newReminder, dueDate: e.target.value})} />
                 <textarea placeholder="Nota adicional..." rows={2} className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-medium text-slate-500 text-xs md:text-sm placeholder:text-slate-300 resize-none" value={newReminder.note} onChange={e=>setNewReminder({...newReminder, note: e.target.value})} />
