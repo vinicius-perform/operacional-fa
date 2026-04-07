@@ -293,9 +293,9 @@ export default function OperacionalApp() {
         <div className="noise-texture" />
         <motion.div initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-md glass-card p-12 rounded-[56px] shadow-2xl relative z-10">
           <div className="flex flex-col items-center mb-12">
-            <div className="flex items-center gap-3 mb-2 select-none group">
-              <span className="text-5xl font-black text-emerald-400 tracking-tighter drop-shadow-[0_0_20px_rgba(52,211,153,0.3)]">FA</span>
-              <h1 className="text-4xl font-black text-white tracking-tighter uppercase translate-y-1">Operacional</h1>
+            <div className="flex items-baseline gap-2 mb-2 select-none group">
+              <span className="text-4xl font-semibold text-emerald-500 tracking-tight">FA</span>
+              <span className="text-3xl font-medium text-white/90 uppercase tracking-tight">Operacional</span>
             </div>
           </div>
           <form className="space-y-6" onSubmit={(e)=>{e.preventDefault(); if(loginEmail==='admin@fa'&&loginPassword==='admin@FA1'){setIsAuthenticated(true); localStorage.setItem('op_auth_v1','true');}}}>
@@ -315,9 +315,9 @@ export default function OperacionalApp() {
       
       {/* Sidebar Refinement */}
       <aside className="fixed left-0 top-0 bottom-0 w-72 neutral-premium-gradient border-r border-white/5 z-30 hidden lg:flex flex-col p-10 shadow-2xl">
-          <div className="flex items-center gap-3 mb-20 px-1 cursor-default select-none group">
-            <span className="text-3xl font-black text-emerald-400 tracking-tighter drop-shadow-[0_0_15px_rgba(52,211,153,0.2)] transition-all group-hover:drop-shadow-[0_0_25px_rgba(52,211,153,0.4)]">FA</span>
-            <h1 className="text-2xl font-black text-white tracking-tighter uppercase translate-y-0.5">Operacional</h1>
+          <div className="flex items-baseline gap-2 mb-20 px-1 cursor-default select-none group">
+            <span className="text-2xl font-semibold text-emerald-500 tracking-tight transition-colors group-hover:text-emerald-400">FA</span>
+            <span className="text-xl font-medium text-white/80 uppercase tracking-tight">Operacional</span>
           </div>
 
         <nav className="space-y-4 flex-grow">
@@ -348,9 +348,9 @@ export default function OperacionalApp() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={()=>setIsMobileMenuOpen(false)} className="fixed inset-0 bg-slate-100/50 backdrop-blur-md z-40 lg:hidden" />
             <motion.aside initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="fixed left-0 top-0 bottom-0 w-80 neutral-premium-gradient border-r border-white/5 z-50 flex flex-col p-10 lg:hidden shadow-2xl">
               <div className="flex items-center justify-between mb-20 px-2">
-                <div className="flex items-center gap-3 select-none">
-                  <span className="text-3xl font-black text-emerald-400 tracking-tighter">FA</span>
-                  <h1 className="text-2xl font-black text-white tracking-tighter uppercase translate-y-0.5">Operacional</h1>
+                <div className="flex items-baseline gap-2 select-none">
+                  <span className="text-2xl font-semibold text-emerald-500 tracking-tight">FA</span>
+                  <span className="text-xl font-medium text-white/80 uppercase tracking-tight">Operacional</span>
                 </div>
                 <button onClick={()=>setIsMobileMenuOpen(false)} className="p-2 rounded-xl bg-white/5 text-slate-400"><X className="w-5 h-5" /></button>
               </div>
