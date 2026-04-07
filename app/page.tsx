@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '@/lib/supabase';
 import { 
   StickyNote, 
   Bell, 
@@ -95,6 +96,7 @@ export default function OperacionalApp() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Form States
   const [newNote, setNewNote] = useState({ clientName: '', statusSummary: '', content: '', status: 'Starting' as ClientStatus });
@@ -104,66 +106,80 @@ export default function OperacionalApp() {
   useEffect(() => {
     const auth = localStorage.getItem('op_auth_v1');
     setIsAuthenticated(auth === 'true');
-    const savedNotes = localStorage.getItem('op_notes_v3');
-    const savedReminders = localStorage.getItem('op_reminders_v3');
-    
-    if (savedNotes) setNotes(JSON.parse(savedNotes));
-    else {
-      const initialNotes: ClientNote[] = [];
-      setNotes(initialNotes);
-    }
-    if (savedReminders) setReminders(JSON.parse(savedReminders));
-    else {
-      const initialReminders: Reminder[] = [];
-      setReminders(initialReminders);
-    }
   }, []);
-
-  const handleAddNote = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingNoteId) {
-      setNotes(prev => prev.map(n => n.id === editingNoteId ? { ...n, ...newNote, updatedAt: new Date().toISOString() } : n));
-      // Update selectedNote if it's the one being edited
-      if (selectedNote?.id === editingNoteId) {
-        setSelectedNote(prev => prev ? { ...prev, ...newNote, updatedAt: new Date().toISOString() } : null);
-      }
-    } else {
-      const note: ClientNote = {
-        id: Date.now().toString(),
-        ...newNote,
-        updatedAt: new Date().toISOString(),
-        stage: 'active'
-      };
-      setNotes([note, ...notes]);
-    }
-    setIsNoteFormOpen(false);
-    setEditingNoteId(null);
-    setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting' });
-  };
-
-  const handleAddReminder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingReminderId) {
-      setReminders(prev => prev.map(r => r.id === editingReminderId ? { ...r, ...newReminder } : r));
-    } else {
-      const reminder: Reminder = {
-        id: Date.now().toString(),
-        ...newReminder,
-        completed: false
-      };
-      setReminders([reminder, ...reminders]);
-    }
-    setIsReminderFormOpen(false);
-    setEditingReminderId(null);
-    setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '' });
-  };
 
   useEffect(() => {
     if (isAuthenticated) {
-      localStorage.setItem('op_notes_v3', JSON.stringify(notes));
-      localStorage.setItem('op_reminders_v3', JSON.stringify(reminders));
+      fetchData();
     }
-  }, [notes, reminders, isAuthenticated]);
+  }, [isAuthenticated]);
+
+  async function fetchData() {
+    setIsLoading(true);
+    try {
+      const { data: remoteNotes } = await supabase.from('notes').select('*').order('updatedAt', { ascending: false });
+      const { data: remoteReminders } = await supabase.from('reminders').select('*');
+      
+      if (remoteNotes) setNotes(remoteNotes);
+      if (remoteReminders) setReminders(remoteReminders);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = editingNoteId || Date.now().toString();
+    const noteData: ClientNote = {
+      id,
+      ...newNote,
+      updatedAt: new Date().toISOString(),
+      stage: 'active' as StageId
+    };
+
+    // Optimistic update
+    if (editingNoteId) {
+      setNotes(prev => prev.map(n => n.id === editingNoteId ? noteData : n));
+      if (selectedNote?.id === editingNoteId) setSelectedNote(noteData);
+    } else {
+      setNotes([noteData, ...notes]);
+    }
+
+    setIsNoteFormOpen(false);
+    setEditingNoteId(null);
+    setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting' });
+
+    // Supabase sync
+    await supabase.from('notes').upsert(noteData);
+  };
+
+  const handleAddReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = editingReminderId || Date.now().toString();
+    const reminderData: Reminder = {
+      id,
+      ...newReminder,
+      completed: false
+    };
+
+    // Optimistic update
+    if (editingReminderId) {
+      setReminders(prev => prev.map(r => r.id === editingReminderId ? { ...r, ...newReminder } : r));
+    } else {
+      setReminders([reminderData, ...reminders]);
+    }
+
+    setIsReminderFormOpen(false);
+    setEditingReminderId(null);
+    setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '' });
+
+    // Supabase sync
+    await supabase.from('reminders').upsert(reminderData);
+  };
+
+  // Persistence removed in favor of real-time cloud sync
 
   const stats = useMemo(() => ({
     totalClients: notes.length,
@@ -297,7 +313,14 @@ export default function OperacionalApp() {
           </motion.header>
 
           <AnimatePresence mode="wait">
-            {activeTab === 'dashboard' && (
+            {isLoading ? (
+              <motion.div key="loader" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center py-20 gap-4">
+                <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[4px]">Sincronizando Nuvem</span>
+              </motion.div>
+            ) : (
+              <>
+                {activeTab === 'dashboard' && (
               <motion.div key="dash" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-12">
                 
                 {/* Real Bento: Varying Card Sizes */}
@@ -465,6 +488,8 @@ export default function OperacionalApp() {
                  <div className="relative z-10 pt-8 md:pt-16 border-t border-slate-50 flex flex-col md:flex-row gap-4 md:justify-between items-center"><button className="px-8 py-4 rounded-2xl text-slate-400 font-bold text-[10px] md:text-sm tracking-widest uppercase">Descartar Build</button><button className="w-full md:w-auto px-10 py-5 btn-premium font-bold text-base shadow-2xl shadow-black/10">Aplicar Workspace</button></div>
                  <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/5 blur-[140px] pointer-events-none -z-0" />
               </motion.div>
+            )}
+              </>
             )}
           </AnimatePresence>
         </div>
