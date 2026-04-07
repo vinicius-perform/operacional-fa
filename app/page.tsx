@@ -43,8 +43,13 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // --- Types ---
-type ClientStatus = 'Excellent' | 'Optimizing' | 'Attention' | 'Starting';
+type ClientStatus = 'Excellent' | 'Optimizing' | 'Attention' | 'Starting' | 'Critical';
 type StageId = 'lead' | 'processing' | 'active' | 'review' | 'done';
+
+interface Manager {
+  id: string;
+  name: string;
+}
 
 interface ClientNote {
   id: string;
@@ -54,6 +59,7 @@ interface ClientNote {
   status: ClientStatus;
   updatedAt: string;
   stage: StageId;
+  responsibleManager?: string;
 }
 
 interface Reminder {
@@ -65,6 +71,7 @@ interface Reminder {
   priority: 'low' | 'medium' | 'high';
   completed: boolean;
   responsible?: string;
+  responsibleManager?: string;
 }
 
 // --- Components ---
@@ -75,6 +82,7 @@ const StatusBadge = ({ status }: { status: ClientStatus }) => {
     Optimizing: "bg-blue-500/10 text-blue-600 border-blue-500/20",
     Attention: "bg-amber-500/10 text-amber-600 border-amber-500/20",
     Starting: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+    Critical: "bg-rose-500/10 text-rose-600 border-rose-500/20",
   };
   return <span className={cn("px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-widest", styles[status])}>{status}</span>;
 };
@@ -85,22 +93,27 @@ export default function OperacionalApp() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'notes' | 'reminders' | 'admin'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'notes' | 'reminders' | 'managers' | 'admin'>('dashboard');
   
   const [notes, setNotes] = useState<ClientNote[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [managers, setManagers] = useState<Manager[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [noteManagerFilter, setNoteManagerFilter] = useState<string | null>(null);
   const [selectedNote, setSelectedNote] = useState<ClientNote | null>(null);
   const [isNoteFormOpen, setIsNoteFormOpen] = useState(false);
   const [isReminderFormOpen, setIsReminderFormOpen] = useState(false);
+  const [isManagerFormOpen, setIsManagerFormOpen] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Form States
-  const [newNote, setNewNote] = useState({ clientName: '', statusSummary: '', content: '', status: 'Starting' as ClientStatus });
-  const [newReminder, setNewReminder] = useState({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium' as any, responsible: '' });
+  const [newNote, setNewNote] = useState({ clientName: '', statusSummary: '', content: '', status: 'Starting' as ClientStatus, responsibleManager: '' });
+  const [newReminder, setNewReminder] = useState({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium' as any, responsible: '', responsibleManager: '' });
+  const [newManager, setNewManager] = useState({ name: '' });
 
   // Persistence
   useEffect(() => {
@@ -119,9 +132,11 @@ export default function OperacionalApp() {
     try {
       const { data: remoteNotes } = await supabase.from('notes').select('*').order('updatedAt', { ascending: false });
       const { data: remoteReminders } = await supabase.from('reminders').select('*');
+      const { data: remoteManagers } = await supabase.from('managers').select('*');
       
       if (remoteNotes) setNotes(remoteNotes);
       if (remoteReminders) setReminders(remoteReminders);
+      if (remoteManagers) setManagers(remoteManagers);
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
@@ -149,7 +164,7 @@ export default function OperacionalApp() {
 
     setIsNoteFormOpen(false);
     setEditingNoteId(null);
-    setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting' });
+    setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting', responsibleManager: '' });
 
     // Supabase sync
     await supabase.from('notes').upsert(noteData);
@@ -173,10 +188,38 @@ export default function OperacionalApp() {
 
     setIsReminderFormOpen(false);
     setEditingReminderId(null);
-    setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '' });
+    setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManager: '' });
 
     // Supabase sync
     await supabase.from('reminders').upsert(reminderData);
+  };
+
+  const handleAddManager = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = editingManagerId || Date.now().toString();
+    const managerData: Manager = {
+      id,
+      ...newManager
+    };
+
+    // Optimistic update
+    if (editingManagerId) {
+      setManagers(prev => prev.map(m => m.id === editingManagerId ? managerData : m));
+    } else {
+      setManagers([managerData, ...managers]);
+    }
+
+    setIsManagerFormOpen(false);
+    setEditingManagerId(null);
+    setNewManager({ name: '' });
+
+    // Supabase sync
+    await supabase.from('managers').upsert(managerData);
+  };
+
+  const handleDeleteManager = async (id: string) => {
+    setManagers(prev => prev.filter(m => m.id !== id));
+    await supabase.from('managers').delete().eq('id', id);
   };
 
   // Persistence removed in favor of real-time cloud sync
@@ -187,6 +230,16 @@ export default function OperacionalApp() {
     urgency: reminders.filter(r => !r.completed && r.priority === 'high').length,
     activeOps: notes.filter(n => n.stage === 'active').length,
   }), [notes, reminders]);
+
+  const filteredNotes = useMemo(() => {
+    return notes.filter(n => {
+      const matchesSearch = n.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          n.statusSummary.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          n.content.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesManager = !noteManagerFilter || n.responsibleManager === noteManagerFilter;
+      return matchesSearch && matchesManager;
+    });
+  }, [notes, searchQuery, noteManagerFilter]);
 
   if (isAuthenticated === null) return null;
 
@@ -227,6 +280,7 @@ export default function OperacionalApp() {
             { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
             { id: 'notes', label: 'Diário', icon: StickyNote },
             { id: 'reminders', label: 'Ações', icon: Bell },
+            { id: 'managers', label: 'Gestores', icon: User },
             { id: 'admin', label: 'Avançado', icon: Settings },
           ].map((item) => (
             <button key={item.id} onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} className={cn("w-full flex items-center gap-4 px-5 py-4 rounded-3xl transition-all group font-bold text-sm leading-none", activeTab === item.id ? "sidebar-active-premium" : "text-slate-400 hover:text-slate-900 hover:bg-slate-50/50")}>
@@ -259,6 +313,7 @@ export default function OperacionalApp() {
                   { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
                   { id: 'notes', label: 'Diário', icon: StickyNote },
                   { id: 'reminders', label: 'Ações', icon: Bell },
+                  { id: 'managers', label: 'Gestores', icon: User },
                   { id: 'admin', label: 'Avançado', icon: Settings },
                 ].map((item) => (
                   <button key={item.id} onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} className={cn("w-full flex items-center gap-4 px-5 py-4 rounded-3xl transition-all group font-bold text-sm leading-none", activeTab === item.id ? "sidebar-active-premium" : "text-slate-400 hover:text-slate-900")}>
@@ -288,7 +343,7 @@ export default function OperacionalApp() {
             <div>
                <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-emerald-400" /><span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Workspace Ativo</span></div>
                <h2 className="text-3xl md:text-5xl font-bold text-gradient tracking-tight leading-none">
-                 {activeTab === 'dashboard' ? 'Hub Principal' : activeTab === 'notes' ? 'Diário' : activeTab === 'reminders' ? 'Lembretes' : 'Painel de Controle'}
+                 {activeTab === 'dashboard' ? 'Hub Principal' : activeTab === 'notes' ? 'Diário' : activeTab === 'reminders' ? 'Lembretes' : activeTab === 'managers' ? 'Gestão de Equipe' : 'Painel de Controle'}
                </h2>
             </div>
             <div className="flex items-center gap-3 md:gap-4 ml-auto lg:ml-0">
@@ -300,9 +355,13 @@ export default function OperacionalApp() {
                 onClick={() => {
                   setEditingNoteId(null);
                   setEditingReminderId(null);
-                  setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting' });
-                  setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '' });
+                  setEditingManagerId(null);
+                  setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting', responsibleManager: '' });
+                  setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManager: '' });
+                  setNewManager({ name: '' });
                   if (activeTab === 'notes') setIsNoteFormOpen(true);
+                  else if (activeTab === 'reminders') setIsReminderFormOpen(true);
+                  else if (activeTab === 'managers') setIsManagerFormOpen(true);
                   else setIsReminderFormOpen(true);
                 }} 
                 className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all text-emerald-500"
@@ -388,10 +447,37 @@ export default function OperacionalApp() {
             )}
 
             {activeTab === 'notes' && (
-               <motion.div key="notes" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
-                  {notes.map(note => (
+               <div className="space-y-12">
+                  {/* Manager Filter Bar */}
+                  <div className="flex flex-wrap items-center gap-3 md:gap-4 -mx-1 px-1">
+                     <button 
+                       onClick={() => setNoteManagerFilter(null)}
+                       className={cn("px-6 py-2.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest border transition-all", !noteManagerFilter ? "bg-slate-900 text-white border-slate-900 shadow-xl" : "bg-white text-slate-400 border-slate-100 hover:border-slate-300")}
+                     >
+                       Todos
+                     </button>
+                     {managers.map(m => (
+                       <button 
+                         key={m.id}
+                         onClick={() => setNoteManagerFilter(m.name)}
+                         className={cn("px-6 py-2.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest border transition-all", noteManagerFilter === m.name ? "bg-emerald-500 text-white border-emerald-500 shadow-xl shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/10")}
+                       >
+                         {m.name}
+                       </button>
+                     ))}
+                  </div>
+
+                  <motion.div key="notes" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
+                  {filteredNotes.map(note => (
                      <motion.div key={note.id} whileHover={{ y: -5 }} onClick={()=>setSelectedNote(note)} className="glass-card p-6 md:p-12 rounded-3xl md:rounded-[56px] cursor-pointer group flex flex-col gap-6 md:gap-8 aura-hover border-transparent hover:border-emerald-500/10">
-                        <div className="flex justify-between"><StatusBadge status={note.status} /><Activity className="w-5 h-5 md:w-6 md:h-6 text-slate-200" /></div>
+                        <div className="flex justify-between items-start">
+                           <StatusBadge status={note.status} />
+                           {note.responsibleManager && (
+                             <div className="px-3 py-1 rounded-full bg-slate-50 border border-slate-100 text-[8px] font-bold text-slate-400 uppercase tracking-widest translate-x-4 md:translate-x-8">
+                               {note.responsibleManager}
+                             </div>
+                           )}
+                        </div>
                         <div className="flex-1 min-h-[100px] md:min-h-[140px]"><h3 className="text-xl md:text-2xl font-bold text-slate-900 mb-2 md:mb-3 tracking-tight group-hover:text-emerald-600 transition-colors">{note.clientName}</h3><p className="text-xs md:text-sm font-medium text-slate-400 leading-relaxed line-clamp-4">{note.content}</p></div>
                         <div className="pt-4 md:pt-6 border-t border-slate-50 flex justify-between items-center">
                           <div className="flex flex-col">
@@ -409,7 +495,7 @@ export default function OperacionalApp() {
                   <button 
                    onClick={() => {
                      setEditingNoteId(null);
-                     setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting' });
+                     setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting', responsibleManager: '' });
                      setIsNoteFormOpen(true);
                    }}
                    className="h-[200px] md:h-[400px] rounded-3xl md:rounded-[56px] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center gap-3 md:gap-4 text-slate-300 hover:text-emerald-400 hover:border-emerald-100 transition-all group outline-none focus:ring-4 focus:ring-emerald-500/5"
@@ -417,7 +503,8 @@ export default function OperacionalApp() {
                     <Plus className="w-8 h-8 md:w-12 md:h-12 group-hover:rotate-90 transition-transform" />
                     <span className="text-[9px] font-bold uppercase tracking-[4px]">Novo Card</span>
                   </button>
-               </motion.div>
+                  </motion.div>
+               </div>
             )}
 
             {activeTab === 'reminders' && (
@@ -431,7 +518,13 @@ export default function OperacionalApp() {
                            <h4 className={cn("text-lg md:text-xl font-bold text-slate-900 mb-1 truncate", rem.completed && "line-through")}>{rem.title}</h4>
                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                               <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-[2px] whitespace-nowrap"><Target className="w-3 h-3 text-emerald-400" /> {rem.clientName || 'Nexus'}</div>
-                              {rem.responsible && (
+                              {rem.responsibleManager && (
+                                <>
+                                  <div className="hidden xs:block w-1 h-1 rounded-full bg-slate-200 shrink-0" />
+                                  <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold text-emerald-500 uppercase tracking-[2px] whitespace-nowrap"><User className="w-3 h-3" /> {rem.responsibleManager}</div>
+                                </>
+                              )}
+                              {!rem.responsibleManager && rem.responsible && (
                                 <>
                                   <div className="hidden xs:block w-1 h-1 rounded-full bg-slate-200 shrink-0" />
                                   <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold text-indigo-500 uppercase tracking-[2px] whitespace-nowrap"><User className="w-3 h-3" /> {rem.responsible}</div>
@@ -452,7 +545,8 @@ export default function OperacionalApp() {
                                  note: rem.note,
                                  dueDate: rem.dueDate,
                                  priority: rem.priority,
-                                 responsible: rem.responsible || ''
+                                 responsible: rem.responsible || '',
+                                 responsibleManager: rem.responsibleManager || ''
                                });
                                setIsReminderFormOpen(true);
                              }}
@@ -467,6 +561,57 @@ export default function OperacionalApp() {
                      </div>
                    ))}
                 </motion.div>
+            )}
+
+            {activeTab === 'managers' && (
+              <motion.div key="managers" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
+                {managers.map(manager => (
+                  <motion.div key={manager.id} whileHover={{ y: -5 }} className="glass-card p-8 rounded-[48px] flex flex-col gap-6 aura-hover group relative overflow-hidden">
+                    <div className="flex justify-between items-start relative z-10">
+                      <div className="w-16 h-16 rounded-3xl bg-slate-900 text-white flex items-center justify-center text-2xl font-bold shadow-2xl shrink-0 uppercase">{manager.name[0]}</div>
+                      <div className="flex gap-2">
+                       <button 
+                         onClick={() => {
+                           setEditingManagerId(manager.id);
+                           setNewManager({ name: manager.name });
+                           setIsManagerFormOpen(true);
+                         }}
+                         className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 transition-all"
+                       >
+                         <Edit2 className="w-4 h-4" />
+                       </button>
+                       <button 
+                         onClick={() => handleDeleteManager(manager.id)}
+                         className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all"
+                       >
+                         <X className="w-4 h-4" />
+                       </button>
+                      </div>
+                    </div>
+                    <div className="relative z-10">
+                      <h3 className="text-xl font-bold text-slate-900 mb-1">{manager.name}</h3>
+                    </div>
+                    <div className="relative z-10 pt-6 border-t border-slate-50 flex items-center justify-between">
+                       <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Responsabilidades</div>
+                       <div className="flex -space-x-2">
+                          <div className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-white flex items-center justify-center text-[11px] font-bold text-emerald-600 shadow-sm">{notes.filter(n => n.responsibleManager === manager.name).length + reminders.filter(r => r.responsibleManager === manager.name).length}</div>
+                       </div>
+                    </div>
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[40px] rounded-full -z-0" />
+                  </motion.div>
+                ))}
+                <button 
+                 onClick={() => {
+                   setEditingManagerId(null);
+                   setNewManager({ name: '' });
+                   setIsManagerFormOpen(true);
+                 }}
+                 className="h-full min-h-[260px] rounded-[48px] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center gap-4 text-slate-300 hover:text-emerald-400 hover:border-emerald-100 transition-all group outline-none"
+                >
+                  <Plus className="w-10 h-10 group-hover:rotate-90 transition-transform" />
+                  <span className="text-[10px] font-bold uppercase tracking-[4px]">Novo Gestor</span>
+                </button>
+              </motion.div>
             )}
 
             {activeTab === 'admin' && (
@@ -512,7 +657,8 @@ export default function OperacionalApp() {
                       clientName: selectedNote.clientName,
                       statusSummary: selectedNote.statusSummary,
                       content: selectedNote.content,
-                      status: selectedNote.status
+                      status: selectedNote.status,
+                      responsibleManager: selectedNote.responsibleManager || ''
                     });
                     setIsNoteFormOpen(true);
                   }}
@@ -539,9 +685,21 @@ export default function OperacionalApp() {
                   <input required placeholder="Nome do Cliente" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newNote.clientName} onChange={e=>setNewNote({...newNote, clientName: e.target.value})} />
                   <input required placeholder="Resumo do Status" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 placeholder:text-slate-300 text-xs md:text-sm" value={newNote.statusSummary} onChange={e=>setNewNote({...newNote, statusSummary: e.target.value})} />
                   <textarea required placeholder="Relato Detalhado..." rows={4} className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-medium text-slate-500 placeholder:text-slate-300 text-xs md:text-sm resize-none" value={newNote.content} onChange={e=>setNewNote({...newNote, content: e.target.value})} />
-                  <div className="grid grid-cols-2 gap-3 md:gap-4">
-                    {['Excellent', 'Optimizing', 'Attention', 'Starting'].map(s => (
-                      <button key={s} type="button" onClick={()=>setNewNote({...newNote, status: s as any})} className={cn("py-3 md:py-4 rounded-xl md:rounded-2xl border transition-all text-[8px] md:text-[10px] font-bold uppercase tracking-widest", newNote.status === s ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/10")}>{s}</button>
+                  
+                  <select 
+                    className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 text-xs md:text-sm appearance-none cursor-pointer"
+                    value={newNote.responsibleManager}
+                    onChange={e => setNewNote({...newNote, responsibleManager: e.target.value})}
+                  >
+                    <option value="">Selecionar Gestor Responsável (Opcional)</option>
+                    {managers.map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
+
+                  <div className="grid grid-cols-2 xs:grid-cols-3 gap-2 md:gap-3">
+                    {['Excellent', 'Optimizing', 'Attention', 'Starting', 'Critical'].map(s => (
+                      <button key={s} type="button" onClick={()=>setNewNote({...newNote, status: s as any})} className={cn("py-3 md:py-4 rounded-xl md:rounded-2xl border transition-all text-[7px] md:text-[9px] font-bold uppercase tracking-widest", newNote.status === s ? (s === 'Critical' ? "bg-rose-500 text-white border-rose-500 shadow-lg shadow-rose-500/20" : "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20") : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/10")}>{s}</button>
                     ))}
                   </div>
                 </div>
@@ -568,7 +726,16 @@ export default function OperacionalApp() {
                 <input required placeholder="Título da Ação" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newReminder.title} onChange={e=>setNewReminder({...newReminder, title: e.target.value})} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input placeholder="Cliente (Opcional)" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm placeholder:text-slate-300" value={newReminder.clientName} onChange={e=>setNewReminder({...newReminder, clientName: e.target.value})} />
-                  <input required placeholder="Responsável" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm placeholder:text-slate-300" value={newReminder.responsible} onChange={e=>setNewReminder({...newReminder, responsible: e.target.value})} />
+                  <select 
+                    className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 text-xs md:text-sm appearance-none cursor-pointer"
+                    value={newReminder.responsibleManager}
+                    onChange={e => setNewReminder({...newReminder, responsibleManager: e.target.value})}
+                  >
+                    <option value="">Gestor Responsável</option>
+                    {managers.map(m => (
+                      <option key={m.id} value={m.name}>{m.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <input required type="date" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm text-slate-600" value={newReminder.dueDate} onChange={e=>setNewReminder({...newReminder, dueDate: e.target.value})} />
                 <textarea placeholder="Nota adicional..." rows={2} className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-medium text-slate-500 text-xs md:text-sm placeholder:text-slate-300 resize-none" value={newReminder.note} onChange={e=>setNewReminder({...newReminder, note: e.target.value})} />
@@ -584,6 +751,33 @@ export default function OperacionalApp() {
 
                 <button type="submit" className="w-full py-4 md:py-5 btn-premium font-bold text-sm md:text-base shadow-2xl shadow-black/10 mt-4">
                   {editingReminderId ? 'Atualizar' : 'Criar Ação'}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* New Manager Modal */}
+      <AnimatePresence>
+        {isManagerFormOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={()=>setIsManagerFormOpen(false)} className="absolute inset-0 bg-slate-900/10 backdrop-blur-xl" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl glass-card rounded-3xl md:rounded-[64px] p-6 md:p-12 lg:p-16 shadow-2xl overflow-y-auto max-h-[90vh] aura-glow">
+              <div className="flex justify-between items-center mb-8 md:mb-10">
+                <h2 className="text-xl md:text-3xl font-bold text-gradient">{editingManagerId ? 'Editar Gestor' : 'Novo Gestor'}</h2>
+                <button onClick={()=>setIsManagerFormOpen(false)} className="p-3 md:p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <X className="w-5 h-5 md:w-6 md:h-6 text-slate-400" />
+                </button>
+              </div>
+              <form onSubmit={handleAddManager} className="space-y-4 md:space-y-6">
+                <input required placeholder="Nome Completo" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newManager.name} onChange={e=>setNewManager({...newManager, name: e.target.value})} />
+                
+                <button type="submit" className="w-full py-4 md:py-5 btn-emerald font-bold text-sm md:text-base shadow-2xl shadow-emerald-500/10 mt-4 group">
+                  <div className="flex items-center justify-center gap-2">
+                    {editingManagerId ? 'Atualizar Perfil' : 'Cadastrar Gestor'} 
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
                 </button>
               </form>
             </motion.div>
