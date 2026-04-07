@@ -46,9 +46,19 @@ function cn(...inputs: ClassValue[]) {
 type ClientStatus = 'Excellent' | 'Optimizing' | 'Attention' | 'Starting' | 'Critical';
 type StageId = 'lead' | 'processing' | 'active' | 'review' | 'done';
 
-interface Manager {
+type ResponsibleRole = 'Traffic' | 'Social';
+
+interface Responsible {
   id: string;
   name: string;
+  role: ResponsibleRole;
+}
+
+interface Client {
+  id: string;
+  name: string;
+  trafficManagerId?: string;
+  socialMediaId?: string;
 }
 
 interface ClientNote {
@@ -93,27 +103,31 @@ export default function OperacionalApp() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'notes' | 'reminders' | 'managers' | 'admin'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'notes' | 'reminders' | 'responsibles' | 'clients' | 'admin'>('dashboard');
   
   const [notes, setNotes] = useState<ClientNote[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [managers, setManagers] = useState<Manager[]>([]);
+  const [responsibles, setResponsibles] = useState<Responsible[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [noteManagerFilter, setNoteManagerFilter] = useState<string | null>(null);
   const [selectedNote, setSelectedNote] = useState<ClientNote | null>(null);
   const [isNoteFormOpen, setIsNoteFormOpen] = useState(false);
   const [isReminderFormOpen, setIsReminderFormOpen] = useState(false);
-  const [isManagerFormOpen, setIsManagerFormOpen] = useState(false);
+  const [isResponsibleFormOpen, setIsResponsibleFormOpen] = useState(false);
+  const [isClientFormOpen, setIsClientFormOpen] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
-  const [editingManagerId, setEditingManagerId] = useState<string | null>(null);
+  const [editingResponsibleId, setEditingResponsibleId] = useState<string | null>(null);
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // Form States
   const [newNote, setNewNote] = useState({ clientName: '', statusSummary: '', content: '', status: 'Starting' as ClientStatus, responsibleManager: '' });
   const [newReminder, setNewReminder] = useState({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium' as any, responsible: '', responsibleManagers: [] as string[] });
-  const [newManager, setNewManager] = useState({ name: '' });
+  const [newResponsible, setNewResponsible] = useState({ name: '', role: 'Traffic' as ResponsibleRole });
+  const [newClient, setNewClient] = useState({ name: '', trafficManagerId: '', socialMediaId: '' });
 
   // Persistence
   useEffect(() => {
@@ -132,11 +146,13 @@ export default function OperacionalApp() {
     try {
       const { data: remoteNotes } = await supabase.from('notes').select('*').order('updatedAt', { ascending: false });
       const { data: remoteReminders } = await supabase.from('reminders').select('*');
-      const { data: remoteManagers } = await supabase.from('managers').select('*');
+      const { data: remoteResponsibles } = await supabase.from('responsibles').select('*');
+      const { data: remoteClients } = await supabase.from('clients').select('*');
       
       if (remoteNotes) setNotes(remoteNotes);
       if (remoteReminders) setReminders(remoteReminders);
-      if (remoteManagers) setManagers(remoteManagers);
+      if (remoteResponsibles) setResponsibles(remoteResponsibles);
+      if (remoteClients) setClients(remoteClients);
     } catch (err) {
       console.error('Error fetching data:', err);
     } finally {
@@ -194,42 +210,70 @@ export default function OperacionalApp() {
     await supabase.from('reminders').upsert(reminderData);
   };
 
-  const handleAddManager = async (e: React.FormEvent) => {
+  const handleAddResponsible = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = editingManagerId || Date.now().toString();
-    const managerData: Manager = {
+    const id = editingResponsibleId || Date.now().toString();
+    const responsibleData: Responsible = {
       id,
-      ...newManager
+      ...newResponsible
     };
 
     // Optimistic update
-    if (editingManagerId) {
-      setManagers(prev => prev.map(m => m.id === editingManagerId ? managerData : m));
+    if (editingResponsibleId) {
+      setResponsibles(prev => prev.map(r => r.id === editingResponsibleId ? responsibleData : r));
     } else {
-      setManagers([managerData, ...managers]);
+      setResponsibles([responsibleData, ...responsibles]);
     }
 
-    setIsManagerFormOpen(false);
-    setEditingManagerId(null);
-    setNewManager({ name: '' });
+    setIsResponsibleFormOpen(false);
+    setEditingResponsibleId(null);
+    setNewResponsible({ name: '', role: 'Traffic' });
 
     // Supabase sync
-    await supabase.from('managers').upsert(managerData);
+    await supabase.from('responsibles').upsert(responsibleData);
   };
 
-  const handleDeleteManager = async (id: string) => {
-    setManagers(prev => prev.filter(m => m.id !== id));
-    await supabase.from('managers').delete().eq('id', id);
+  const handleDeleteResponsible = async (id: string) => {
+    setResponsibles(prev => prev.filter(r => r.id !== id));
+    await supabase.from('responsibles').delete().eq('id', id);
+  };
+
+  const handleAddClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = editingClientId || Date.now().toString();
+    const clientData: Client = {
+      id,
+      ...newClient
+    };
+
+    // Optimistic update
+    if (editingClientId) {
+      setClients(prev => prev.map(c => c.id === editingClientId ? clientData : c));
+    } else {
+      setClients([clientData, ...clients]);
+    }
+
+    setIsClientFormOpen(false);
+    setEditingClientId(null);
+    setNewClient({ name: '', trafficManagerId: '', socialMediaId: '' });
+
+    // Supabase sync
+    await supabase.from('clients').upsert(clientData);
+  };
+
+  const handleDeleteClient = async (id: string) => {
+    setClients(prev => prev.filter(c => c.id !== id));
+    await supabase.from('clients').delete().eq('id', id);
   };
 
   // Persistence removed in favor of real-time cloud sync
 
   const stats = useMemo(() => ({
-    totalClients: notes.length,
+    totalClients: clients.length,
     dueToday: reminders.filter(r => !r.completed && r.dueDate === new Date().toISOString().split('T')[0]).length,
     urgency: reminders.filter(r => !r.completed && r.priority === 'high').length,
-    activeOps: notes.filter(n => n.stage === 'active').length,
-  }), [notes, reminders]);
+    activeOps: notes.length,
+  }), [notes, reminders, clients]);
 
   const filteredNotes = useMemo(() => {
     return notes.filter(n => {
@@ -249,9 +293,10 @@ export default function OperacionalApp() {
         <div className="noise-texture" />
         <motion.div initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="w-full max-w-md glass-card p-12 rounded-[56px] shadow-2xl relative z-10">
           <div className="flex flex-col items-center mb-12">
-            <div className="w-20 h-20 rounded-[28px] bg-slate-900 flex items-center justify-center mb-8 shadow-2xl"><Lock className="w-10 h-10 text-white" /></div>
-            <h1 className="text-3xl font-bold text-gradient mb-2">Operacional</h1>
-            <p className="text-slate-400 text-sm font-medium tracking-tight">Workspace Interno FA Performance</p>
+            <div className="flex items-center gap-4 mb-2">
+              <span className="text-4xl font-black text-emerald-400 tracking-tighter">FA</span>
+              <h1 className="text-3xl font-black text-gradient uppercase tracking-[0.2em] translate-y-0.5">OPERACIONAL</h1>
+            </div>
           </div>
           <form className="space-y-6" onSubmit={(e)=>{e.preventDefault(); if(loginEmail==='admin@fa'&&loginPassword==='admin@FA1'){setIsAuthenticated(true); localStorage.setItem('op_auth_v1','true');}}}>
              <input type="text" placeholder="Usuário" value={loginEmail} onChange={(e)=>setLoginEmail(e.target.value)} className="w-full px-8 py-5 rounded-3xl bg-white border border-gray-100 outline-none focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500/20 transition-all font-medium text-base shadow-sm" />
@@ -269,29 +314,30 @@ export default function OperacionalApp() {
       <div className="noise-texture" />
       
       {/* Sidebar Refinement */}
-      <aside className="fixed left-0 top-0 bottom-0 w-72 glass border-r z-30 hidden lg:flex flex-col p-10">
-        <div className="flex items-center gap-4 mb-20 px-2">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/30"><Zap className="w-6 h-6 text-white" /></div>
-          <div><h1 className="text-xl font-bold text-slate-900 tracking-tight leading-none mb-1">Operacional</h1><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest leading-none">FA Performance</p></div>
-        </div>
+      <aside className="fixed left-0 top-0 bottom-0 w-72 neutral-premium-gradient border-r border-white/5 z-30 hidden lg:flex flex-col p-10 shadow-2xl">
+          <div className="flex items-center gap-4 mb-20 px-2 group cursor-default">
+            <span className="text-3xl font-black text-emerald-400 tracking-tighter drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]">FA</span>
+            <h1 className="text-xl font-black text-white tracking-[0.15em] uppercase translate-y-0.5">OPERACIONAL</h1>
+          </div>
 
         <nav className="space-y-4 flex-grow">
           {[
             { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
             { id: 'notes', label: 'Diário', icon: StickyNote },
+            { id: 'clients', label: 'Clientes', icon: Layers },
+            { id: 'responsibles', label: 'Responsáveis', icon: User },
             { id: 'reminders', label: 'Ações', icon: Bell },
-            { id: 'managers', label: 'Gestores', icon: User },
             { id: 'admin', label: 'Avançado', icon: Settings },
           ].map((item) => (
-            <button key={item.id} onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} className={cn("w-full flex items-center gap-4 px-5 py-4 rounded-3xl transition-all group font-bold text-sm leading-none", activeTab === item.id ? "sidebar-active-premium" : "text-slate-400 hover:text-slate-900 hover:bg-slate-50/50")}>
-              <item.icon className={cn("w-5 h-5 transition-colors", activeTab === item.id ? "text-emerald-600" : "text-slate-300 group-hover:text-slate-500")} />
+            <button key={item.id} onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} className={cn("w-full flex items-center gap-4 px-5 py-4 rounded-3xl transition-all group font-bold text-sm leading-none", activeTab === item.id ? "sidebar-active-dark text-white" : "text-slate-400 hover:text-white hover:bg-white/5")}>
+              <item.icon className={cn("w-5 h-5 transition-colors", activeTab === item.id ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-200")} />
               {item.label}
             </button>
           ))}
         </nav>
 
-        <div className="mt-auto pt-10 border-t border-slate-100 px-2">
-           <button onClick={()=>{setIsAuthenticated(false); localStorage.removeItem('op_auth_v1');}} className="w-full flex items-center gap-3 px-2 py-4 text-slate-300 hover:text-rose-500 transition-all text-xs font-bold uppercase tracking-[3px]"><LogOut className="w-4 h-4" /> Sair do Sistema</button>
+        <div className="mt-auto pt-10 border-t border-white/5 px-2">
+           <button onClick={()=>{setIsAuthenticated(false); localStorage.removeItem('op_auth_v1');}} className="w-full flex items-center gap-3 px-2 py-4 text-slate-500 hover:text-rose-400 transition-all text-xs font-bold uppercase tracking-[3px]"><LogOut className="w-4 h-4" /> Sair do Sistema</button>
         </div>
       </aside>
 
@@ -300,24 +346,25 @@ export default function OperacionalApp() {
         {isMobileMenuOpen && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={()=>setIsMobileMenuOpen(false)} className="fixed inset-0 bg-slate-100/50 backdrop-blur-md z-40 lg:hidden" />
-            <motion.aside initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="fixed left-0 top-0 bottom-0 w-80 glass-focal border-r z-50 flex flex-col p-10 lg:hidden shadow-2xl">
+            <motion.aside initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="fixed left-0 top-0 bottom-0 w-80 neutral-premium-gradient border-r border-white/5 z-50 flex flex-col p-10 lg:hidden shadow-2xl">
               <div className="flex items-center justify-between mb-20 px-2">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/30"><Zap className="w-5 h-5 text-white" /></div>
-                  <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-none">Operacional</h1>
+                  <span className="text-3xl font-black text-emerald-400 tracking-tighter">FA</span>
+                  <h1 className="text-xl font-black text-white tracking-[0.15em] uppercase translate-y-0.5">OPERACIONAL</h1>
                 </div>
-                <button onClick={()=>setIsMobileMenuOpen(false)} className="p-2 rounded-xl bg-slate-50 text-slate-400"><X className="w-5 h-5" /></button>
+                <button onClick={()=>setIsMobileMenuOpen(false)} className="p-2 rounded-xl bg-white/5 text-slate-400"><X className="w-5 h-5" /></button>
               </div>
               <nav className="space-y-4 flex-grow">
                 {[
                   { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
                   { id: 'notes', label: 'Diário', icon: StickyNote },
+                  { id: 'clients', label: 'Clientes', icon: Layers },
+                  { id: 'responsibles', label: 'Responsáveis', icon: User },
                   { id: 'reminders', label: 'Ações', icon: Bell },
-                  { id: 'managers', label: 'Gestores', icon: User },
                   { id: 'admin', label: 'Avançado', icon: Settings },
                 ].map((item) => (
-                  <button key={item.id} onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} className={cn("w-full flex items-center gap-4 px-5 py-4 rounded-3xl transition-all group font-bold text-sm leading-none", activeTab === item.id ? "sidebar-active-premium" : "text-slate-400 hover:text-slate-900")}>
-                    <item.icon className={cn("w-5 h-5 transition-colors", activeTab === item.id ? "text-emerald-600" : "text-slate-300")} />
+                  <button key={item.id} onClick={() => { setActiveTab(item.id as any); setIsMobileMenuOpen(false); }} className={cn("w-full flex items-center gap-4 px-5 py-4 rounded-3xl transition-all group font-bold text-sm leading-none", activeTab === item.id ? "sidebar-active-dark text-white" : "text-slate-300 hover:text-white")}>
+                    <item.icon className={cn("w-5 h-5 transition-colors", activeTab === item.id ? "text-emerald-400" : "text-slate-400")} />
                     {item.label}
                   </button>
                 ))}
@@ -343,7 +390,7 @@ export default function OperacionalApp() {
             <div>
                <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-emerald-400" /><span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Workspace Ativo</span></div>
                <h2 className="text-3xl md:text-5xl font-bold text-gradient tracking-tight leading-none">
-                 {activeTab === 'dashboard' ? 'Hub Principal' : activeTab === 'notes' ? 'Diário' : activeTab === 'reminders' ? 'Lembretes' : activeTab === 'managers' ? 'Gestão de Equipe' : 'Painel de Controle'}
+                 {activeTab === 'dashboard' ? 'Hub Principal' : activeTab === 'notes' ? 'Diário' : activeTab === 'reminders' ? 'Lembretes' : activeTab === 'responsibles' ? 'Equipe Nexus' : activeTab === 'clients' ? 'Portfólio' : 'Painel de Controle'}
                </h2>
             </div>
             <div className="flex items-center gap-3 md:gap-4 ml-auto lg:ml-0">
@@ -355,13 +402,16 @@ export default function OperacionalApp() {
                 onClick={() => {
                   setEditingNoteId(null);
                   setEditingReminderId(null);
-                  setEditingManagerId(null);
+                  setEditingResponsibleId(null);
+                  setEditingClientId(null);
                   setNewNote({ clientName: '', statusSummary: '', content: '', status: 'Starting', responsibleManager: '' });
                   setNewReminder({ title: '', clientName: '', note: '', dueDate: '', priority: 'medium', responsible: '', responsibleManagers: [] });
-                  setNewManager({ name: '' });
+                  setNewResponsible({ name: '', role: 'Traffic' });
+                  setNewClient({ name: '', trafficManagerId: '', socialMediaId: '' });
                   if (activeTab === 'notes') setIsNoteFormOpen(true);
                   else if (activeTab === 'reminders') setIsReminderFormOpen(true);
-                  else if (activeTab === 'managers') setIsManagerFormOpen(true);
+                  else if (activeTab === 'responsibles') setIsResponsibleFormOpen(true);
+                  else if (activeTab === 'clients') setIsClientFormOpen(true);
                   else setIsReminderFormOpen(true);
                 }} 
                 className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all text-emerald-500"
@@ -385,44 +435,42 @@ export default function OperacionalApp() {
                 {/* Real Bento: Varying Card Sizes */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                   
-                  {/* PRIMARY FOCAL CARD (2/3 width) */}
-                  <div className="md:col-span-3 lg:col-span-2 glass-focal rounded-[32px] md:rounded-[48px] p-6 md:p-12 flex flex-col gap-6 md:gap-10 aura-hover">
-                    <div className="flex items-center justify-between">
-                       <h3 className="text-xl md:text-2xl font-bold flex items-center gap-3 md:gap-4 text-slate-900"><Target className="w-6 h-6 md:w-8 md:h-8 text-emerald-500" /> Registro Operacional</h3>
-                       <button onClick={()=>setActiveTab('notes')} className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full hover:bg-emerald-100 transition-colors uppercase tracking-widest">Abrir</button>
+                  {/* PRIMARY FOCAL CARD (2/3 width) - Neutral Gradient applied */}
+                  <div className="md:col-span-3 lg:col-span-2 neutral-premium-gradient rounded-[32px] md:rounded-[48px] p-6 md:p-12 flex flex-col gap-6 md:gap-10 aura-hover relative overflow-hidden group">
+                    <div className="relative z-10 flex items-center justify-between">
+                       <h3 className="text-xl md:text-2xl font-bold flex items-center gap-3 md:gap-4 text-white"><Target className="w-6 h-6 md:w-8 md:h-8 text-emerald-400" /> Registro Operacional</h3>
+                       <button onClick={()=>setActiveTab('notes')} className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-4 py-2 rounded-full hover:bg-emerald-500/20 transition-colors uppercase tracking-widest">Abrir Diário</button>
                     </div>
-                    <div className="space-y-4 md:space-y-6">
-                      {notes.slice(0, 3).map(n => (
-                         <div key={n.id} onClick={()=>setSelectedNote(n)} className="group p-4 md:p-6 rounded-2xl md:rounded-3xl bg-white/40 border border-gray-100/50 hover:bg-white hover:border-emerald-500/10 transition-all flex items-center justify-between cursor-pointer">
+                    <div className="relative z-10 space-y-4 md:space-y-6">
+                      {notes.length > 0 ? notes.slice(0, 3).map(n => (
+                         <div key={n.id} onClick={()=>setSelectedNote(n)} className="group/item p-4 md:p-6 rounded-2xl md:rounded-3xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-emerald-500/20 transition-all flex items-center justify-between cursor-pointer">
                             <div className="flex items-center gap-3 md:gap-5 min-w-0">
-                               <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-900 text-white flex items-center justify-center text-lg md:text-xl font-bold shadow-2xl shrink-0">{n.clientName[0]}</div>
-                               <div className="min-w-0"><h4 className="text-base md:text-lg font-bold text-slate-900 truncate">{n.clientName}</h4><p className="text-xs md:text-sm font-medium text-slate-400 truncate">{n.statusSummary}</p></div>
+                               <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-lg md:text-xl font-bold shadow-2xl shrink-0">{n.clientName[0]}</div>
+                               <div className="min-w-0"><h4 className="text-base md:text-lg font-bold text-white truncate">{n.clientName}</h4><p className="text-xs md:text-sm font-medium text-slate-400 truncate">{n.statusSummary}</p></div>
                             </div>
                             <div className="flex items-center gap-3 md:gap-6 shrink-0">
-                               <div className="hidden xs:block"><StatusBadge status={n.status} /></div><ArrowUpRight className="w-4 h-4 md:w-5 md:h-5 text-slate-200 group-hover:text-emerald-500 transition-colors" />
+                               <div className="hidden xs:block"><StatusBadge status={n.status} /></div><ArrowUpRight className="w-4 h-4 md:w-5 md:h-5 text-slate-500 group-hover/item:text-emerald-400 transition-colors" />
                             </div>
                          </div>
-                      ))}
+                      )) : (
+                        <div className="py-10 text-center border-2 border-dashed border-white/5 rounded-3xl">
+                          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest">Nenhum registro recente</p>
+                        </div>
+                      )}
                     </div>
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full -z-0 pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/5 blur-[80px] rounded-full -z-0 pointer-events-none" />
                   </div>
 
                   {/* SECONDARY STACK */}
                   <div className="md:col-span-3 lg:col-span-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-8">
                     {/* Urgency Card */}
-                    <div className="glass-card rounded-3xl md:rounded-[40px] p-6 md:p-8 flex flex-col justify-between aura-hover">
+                    <div className="glass-card rounded-3xl md:rounded-[40px] p-6 md:p-8 flex flex-col justify-between aura-hover h-full">
                        <div className="flex items-center gap-4 mb-4 md:mb-6"><div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-500 flex items-center justify-center"><AlertCircle className="w-6 h-6" /></div><div className="text-sm font-bold text-slate-900">Urgência Alta</div></div>
-                       <div className="text-4xl md:text-5xl font-bold text-rose-500 mb-2">{stats.urgency}</div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-loose">Items que requerem atenção imediata.</p>
-                    </div>
-
-                    {/* Quick Metric Card */}
-                    <div className="glass-card rounded-3xl md:rounded-[40px] p-6 md:p-8 aura-hover bg-slate-900 overflow-hidden relative">
-                       <div className="relative z-10 flex flex-col justify-between h-full">
-                          <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-4 md:mb-6">Base de Eficiência</div>
-                          <div className="text-3xl md:text-4xl font-bold text-white mb-2 tracking-tighter">98.4%</div>
-                          <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] md:text-xs font-bold leading-none"><Activity className="w-4 h-4" /> Sistema Otimizado</div>
+                       <div>
+                         <div className="text-4xl md:text-6xl font-bold text-rose-500 mb-2">{stats.urgency}</div>
+                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-loose">Items que requerem atenção imediata.</p>
                        </div>
-                       <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-[60px] rounded-full" />
                     </div>
                   </div>
 
@@ -431,10 +479,10 @@ export default function OperacionalApp() {
                 {/* Lower Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                    {[
-                     { label: 'Rede Ativa', value: stats.totalClients, icon: TrendingUp, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-                     { label: 'Fluxo Diário', value: stats.activeOps, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+                     { label: 'Clientes Ativos', value: clients.length, icon: TrendingUp, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+                     { label: 'Responsáveis', value: responsibles.length, icon: User, color: 'text-emerald-500', bg: 'bg-emerald-50' },
                      { label: 'Acompanhamento', value: stats.dueToday, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50' },
-                     { label: 'Ações Necessárias', value: notes.filter(n=>n.status==='Attention').length, icon: Sparkles, color: 'text-rose-500', bg: 'bg-rose-50' },
+                     { label: 'Casos Críticos', value: notes.filter(n=>n.status==='Critical').length, icon: Sparkles, color: 'text-rose-500', bg: 'bg-rose-50' },
                    ].map((s, i) => (
                      <motion.div key={i} whileHover={{ scale: 1.05 }} className="glass-card p-6 rounded-[32px] border-slate-50 flex items-center gap-5 shadow-sm aura-hover">
                         <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shrink-0", s.bg)}><s.icon className={cn("w-6 h-6", s.color)} /></div>
@@ -452,17 +500,17 @@ export default function OperacionalApp() {
                   <div className="flex flex-wrap items-center gap-3 md:gap-4 -mx-1 px-1">
                      <button 
                        onClick={() => setNoteManagerFilter(null)}
-                       className={cn("px-6 py-2.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest border transition-all", !noteManagerFilter ? "bg-slate-900 text-white border-slate-900 shadow-xl" : "bg-white text-slate-400 border-slate-100 hover:border-slate-300")}
+                       className={cn("px-6 py-2.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest border transition-all", !noteManagerFilter ? "bg-neutral-900 text-white border-neutral-900 shadow-xl" : "bg-white text-slate-400 border-slate-100 hover:border-slate-300")}
                      >
                        Todos
                      </button>
-                     {managers.map(m => (
+                     {responsibles.map(r => (
                        <button 
-                         key={m.id}
-                         onClick={() => setNoteManagerFilter(m.name)}
-                         className={cn("px-6 py-2.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest border transition-all", noteManagerFilter === m.name ? "bg-emerald-500 text-white border-emerald-500 shadow-xl shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/10")}
+                         key={r.id}
+                         onClick={() => setNoteManagerFilter(r.name)}
+                         className={cn("px-6 py-2.5 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest border transition-all", noteManagerFilter === r.name ? "bg-emerald-500 text-white border-emerald-500 shadow-xl shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/10")}
                        >
-                         {m.name}
+                         {r.name}
                        </button>
                      ))}
                   </div>
@@ -567,53 +615,107 @@ export default function OperacionalApp() {
                 </motion.div>
             )}
 
-            {activeTab === 'managers' && (
-              <motion.div key="managers" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
-                {managers.map(manager => (
-                  <motion.div key={manager.id} whileHover={{ y: -5 }} className="glass-card p-8 rounded-[48px] flex flex-col gap-6 aura-hover group relative overflow-hidden">
+            {activeTab === 'clients' && (
+              <motion.div key="clients" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
+                {clients.map(client => (
+                  <motion.div key={client.id} whileHover={{ y: -5 }} className="glass-card p-8 rounded-[48px] flex flex-col gap-6 aura-hover group relative overflow-hidden">
                     <div className="flex justify-between items-start relative z-10">
-                      <div className="w-16 h-16 rounded-3xl bg-slate-900 text-white flex items-center justify-center text-2xl font-bold shadow-2xl shrink-0 uppercase">{manager.name[0]}</div>
+                      <div className="w-16 h-16 rounded-3xl bg-indigo-600 text-white flex items-center justify-center text-2xl font-bold shadow-2xl shrink-0 uppercase">{client.name[0]}</div>
                       <div className="flex gap-2">
                        <button 
                          onClick={() => {
-                           setEditingManagerId(manager.id);
-                           setNewManager({ name: manager.name });
-                           setIsManagerFormOpen(true);
+                           setEditingClientId(client.id);
+                           setNewClient({ 
+                             name: client.name, 
+                             trafficManagerId: client.trafficManagerId || '', 
+                             socialMediaId: client.socialMediaId || '' 
+                           });
+                           setIsClientFormOpen(true);
                          }}
-                         className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 transition-all"
+                         className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 transition-all"
                        >
                          <Edit2 className="w-4 h-4" />
                        </button>
                        <button 
-                         onClick={() => handleDeleteManager(manager.id)}
+                         onClick={() => handleDeleteClient(client.id)}
                          className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all"
                        >
                          <X className="w-4 h-4" />
                        </button>
                       </div>
                     </div>
-                    <div className="relative z-10">
-                      <h3 className="text-xl font-bold text-slate-900 mb-1">{manager.name}</h3>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 mb-4">{client.name}</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/50 border border-slate-100/50">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Tráfego</span>
+                          <span className="text-[10px] font-bold text-slate-700">{responsibles.find(r => r.id === client.trafficManagerId)?.name || 'Não atribuído'}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/50 border border-slate-100/50">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Social Media</span>
+                          <span className="text-[10px] font-bold text-slate-700">{responsibles.find(r => r.id === client.socialMediaId)?.name || 'Não atribuído'}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="relative z-10 pt-6 border-t border-slate-50 flex items-center justify-between">
-                       <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Responsabilidades</div>
-                       <div className="flex -space-x-2">
-                          <div className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-white flex items-center justify-center text-[11px] font-bold text-emerald-600 shadow-sm">{notes.filter(n => n.responsibleManager === manager.name).length + reminders.filter(r => r.responsibleManagers?.includes(manager.name)).length}</div>
-                       </div>
-                    </div>
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-[40px] rounded-full -z-0" />
                   </motion.div>
                 ))}
                 <button 
                  onClick={() => {
-                   setEditingManagerId(null);
-                   setNewManager({ name: '' });
-                   setIsManagerFormOpen(true);
+                   setEditingClientId(null);
+                   setNewClient({ name: '', trafficManagerId: '', socialMediaId: '' });
+                   setIsClientFormOpen(true);
+                 }}
+                 className="h-full min-h-[260px] rounded-[48px] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center gap-4 text-slate-300 hover:text-indigo-400 hover:border-indigo-100 transition-all group outline-none"
+                >
+                  <Plus className="w-10 h-10 group-hover:rotate-90 transition-transform" />
+                  <span className="text-[10px] font-bold uppercase tracking-[4px]">Novo Cliente</span>
+                </button>
+              </motion.div>
+            )}
+
+            {activeTab === 'responsibles' && (
+              <motion.div key="responsibles" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-10">
+                {responsibles.map(resp => (
+                  <motion.div key={resp.id} whileHover={{ y: -5 }} className="glass-card p-8 rounded-[48px] flex flex-col gap-6 aura-hover group relative overflow-hidden">
+                    <div className="flex justify-between items-start relative z-10">
+                      <div className={cn("w-16 h-16 rounded-3xl text-white flex items-center justify-center text-2xl font-bold shadow-2xl shrink-0 uppercase", resp.role === 'Traffic' ? "bg-emerald-600" : "bg-purple-600")}>{resp.name[0]}</div>
+                      <div className="flex gap-2">
+                       <button 
+                         onClick={() => {
+                           setEditingResponsibleId(resp.id);
+                           setNewResponsible({ name: resp.name, role: resp.role });
+                           setIsResponsibleFormOpen(true);
+                         }}
+                         className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 transition-all"
+                       >
+                         <Edit2 className="w-4 h-4" />
+                       </button>
+                       <button 
+                         onClick={() => handleDeleteResponsible(resp.id)}
+                         className="p-3 bg-slate-50 rounded-2xl text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all"
+                       >
+                         <X className="w-4 h-4" />
+                       </button>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 mb-1">{resp.name}</h3>
+                      <span className={cn("px-3 py-1 rounded-full text-[8px] font-bold uppercase tracking-widest border", resp.role === 'Traffic' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-purple-50 text-purple-600 border-purple-100")}>
+                        {resp.role === 'Traffic' ? 'Gestor de Tráfego' : 'Social Media'}
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+                <button 
+                 onClick={() => {
+                   setEditingResponsibleId(null);
+                   setNewResponsible({ name: '', role: 'Traffic' });
+                   setIsResponsibleFormOpen(true);
                  }}
                  className="h-full min-h-[260px] rounded-[48px] border-2 border-dashed border-slate-100 flex flex-col items-center justify-center gap-4 text-slate-300 hover:text-emerald-400 hover:border-emerald-100 transition-all group outline-none"
                 >
                   <Plus className="w-10 h-10 group-hover:rotate-90 transition-transform" />
-                  <span className="text-[10px] font-bold uppercase tracking-[4px]">Novo Gestor</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[4px]">Novo Responsável</span>
                 </button>
               </motion.div>
             )}
@@ -686,7 +788,12 @@ export default function OperacionalApp() {
               <div className="flex justify-between items-center mb-8 md:mb-10"><h2 className="text-xl md:text-3xl font-bold text-gradient">{editingNoteId ? 'Editar Registro' : 'Novo Registro'}</h2><button onClick={()=>setIsNoteFormOpen(false)} className="p-3 md:p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors"><X className="w-5 h-5 md:w-6 md:h-6 text-slate-400" /></button></div>
               <form onSubmit={handleAddNote} className="space-y-6 md:space-y-8">
                 <div className="space-y-4">
-                  <input required placeholder="Nome do Cliente" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newNote.clientName} onChange={e=>setNewNote({...newNote, clientName: e.target.value})} />
+                  <select required className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold text-slate-700 text-sm md:text-base appearance-none cursor-pointer" value={newNote.clientName} onChange={e=>setNewNote({...newNote, clientName: e.target.value})}>
+                    <option value="">Selecionar Cliente</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                   <input required placeholder="Resumo do Status" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 placeholder:text-slate-300 text-xs md:text-sm" value={newNote.statusSummary} onChange={e=>setNewNote({...newNote, statusSummary: e.target.value})} />
                   <textarea required placeholder="Relato Detalhado..." rows={4} className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-medium text-slate-500 placeholder:text-slate-300 text-xs md:text-sm resize-none" value={newNote.content} onChange={e=>setNewNote({...newNote, content: e.target.value})} />
                   
@@ -695,9 +802,9 @@ export default function OperacionalApp() {
                     value={newNote.responsibleManager}
                     onChange={e => setNewNote({...newNote, responsibleManager: e.target.value})}
                   >
-                    <option value="">Selecionar Gestor Responsável (Opcional)</option>
-                    {managers.map(m => (
-                      <option key={m.id} value={m.name}>{m.name}</option>
+                    <option value="">Selecionar Responsável (Opcional)</option>
+                    {responsibles.map(r => (
+                      <option key={r.id} value={r.name}>{r.name} ({r.role === 'Traffic' ? 'Tráfego' : 'Social'})</option>
                     ))}
                   </select>
 
@@ -729,14 +836,19 @@ export default function OperacionalApp() {
               <form onSubmit={handleAddReminder} className="space-y-4 md:space-y-6">
                 <input required placeholder="Título da Ação" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newReminder.title} onChange={e=>setNewReminder({...newReminder, title: e.target.value})} />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input placeholder="Cliente (Opcional)" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm placeholder:text-slate-300" value={newReminder.clientName} onChange={e=>setNewReminder({...newReminder, clientName: e.target.value})} />
+                  <select className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-semibold text-xs md:text-sm appearance-none cursor-pointer" value={newReminder.clientName} onChange={e=>setNewReminder({...newReminder, clientName: e.target.value})}>
+                    <option value="">Selecionar Cliente (Opcional)</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                   <div className="w-full">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Gestores Responsáveis</div>
                     <div className="flex flex-wrap gap-2">
-                      {managers.map(m => {
-                        const isSelected = newReminder.responsibleManagers.includes(m.name);
+                      {responsibles.map(r => {
+                        const isSelected = newReminder.responsibleManagers.includes(r.name);
                         return (
-                          <button key={m.id} type="button" onClick={() => { const current = newReminder.responsibleManagers; setNewReminder({...newReminder, responsibleManagers: isSelected ? current.filter(n => n !== m.name) : [...current, m.name]}); }} className={cn("px-4 py-2.5 rounded-xl md:rounded-2xl border transition-all text-xs font-bold", isSelected ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/30")}>{m.name}</button>
+                          <button key={r.id} type="button" onClick={() => { const current = newReminder.responsibleManagers; setNewReminder({...newReminder, responsibleManagers: isSelected ? current.filter(n => n !== r.name) : [...current, r.name]}); }} className={cn("px-4 py-2.5 rounded-xl md:rounded-2xl border transition-all text-xs font-bold", isSelected ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/30")}>{r.name}</button>
                         );
                       })}
                     </div>
@@ -749,7 +861,7 @@ export default function OperacionalApp() {
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest md:ml-2">Prioridade:</span>
                   <div className="flex-1 grid grid-cols-3 gap-2">
                     {['low', 'medium', 'high'].map(p => (
-                      <button key={p} type="button" onClick={()=>setNewReminder({...newReminder, priority: p as any})} className={cn("py-3 rounded-xl md:rounded-2xl border transition-all text-[8px] md:text-[9px] font-bold uppercase tracking-widest", newReminder.priority === p ? (p==='high' ? "bg-rose-500 text-white border-rose-500" : "bg-slate-900 text-white border-slate-900") : "bg-white text-slate-400 border-slate-100 hover:border-slate-300")}>{p}</button>
+                      <button key={p} type="button" onClick={()=>setNewReminder({...newReminder, priority: p as any})} className={cn("py-3 rounded-xl md:rounded-2xl border transition-all text-[8px] md:text-[9px] font-bold uppercase tracking-widest", newReminder.priority === p ? (p==='high' ? "bg-rose-500 text-white border-rose-500" : "bg-neutral-900 text-white border-neutral-900") : "bg-white text-slate-400 border-slate-100 hover:border-slate-300")}>{p}</button>
                     ))}
                   </div>
                 </div>
@@ -763,25 +875,86 @@ export default function OperacionalApp() {
         )}
       </AnimatePresence>
 
-      {/* New Manager Modal */}
+      {/* New Responsible Modal */}
       <AnimatePresence>
-        {isManagerFormOpen && (
+        {isResponsibleFormOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={()=>setIsManagerFormOpen(false)} className="absolute inset-0 bg-slate-900/10 backdrop-blur-xl" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={()=>setIsResponsibleFormOpen(false)} className="absolute inset-0 bg-slate-900/10 backdrop-blur-xl" />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl glass-card rounded-3xl md:rounded-[64px] p-6 md:p-12 lg:p-16 shadow-2xl overflow-y-auto max-h-[90vh] aura-glow">
               <div className="flex justify-between items-center mb-8 md:mb-10">
-                <h2 className="text-xl md:text-3xl font-bold text-gradient">{editingManagerId ? 'Editar Gestor' : 'Novo Gestor'}</h2>
-                <button onClick={()=>setIsManagerFormOpen(false)} className="p-3 md:p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                <h2 className="text-xl md:text-3xl font-bold text-gradient">{editingResponsibleId ? 'Editar Responsável' : 'Novo Responsável'}</h2>
+                <button onClick={()=>setIsResponsibleFormOpen(false)} className="p-3 md:p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors">
                   <X className="w-5 h-5 md:w-6 md:h-6 text-slate-400" />
                 </button>
               </div>
-              <form onSubmit={handleAddManager} className="space-y-4 md:space-y-6">
-                <input required placeholder="Nome Completo" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newManager.name} onChange={e=>setNewManager({...newManager, name: e.target.value})} />
+              <form onSubmit={handleAddResponsible} className="space-y-4 md:space-y-6">
+                <input required placeholder="Nome Completo" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-emerald-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newResponsible.name} onChange={e=>setNewResponsible({...newResponsible, name: e.target.value})} />
                 
+                <div className="flex flex-col gap-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Função Principal</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { id: 'Traffic', label: 'Tráfego' },
+                      { id: 'Social', label: 'Social Media' }
+                    ].map(r => (
+                      <button key={r.id} type="button" onClick={()=>setNewResponsible({...newResponsible, role: r.id as any})} className={cn("py-4 rounded-2xl border transition-all text-[10px] font-bold uppercase tracking-widest", newResponsible.role === r.id ? "bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20" : "bg-white text-slate-400 border-slate-100 hover:border-emerald-500/10")}>{r.label}</button>
+                    ))}
+                  </div>
+                </div>
+
                 <button type="submit" className="w-full py-4 md:py-5 btn-emerald font-bold text-sm md:text-base shadow-2xl shadow-emerald-500/10 mt-4 group">
                   <div className="flex items-center justify-center gap-2">
-                    {editingManagerId ? 'Atualizar Perfil' : 'Cadastrar Gestor'} 
+                    {editingResponsibleId ? 'Atualizar Perfil' : 'Cadastrar Membro'} 
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* New Client Modal */}
+      <AnimatePresence>
+        {isClientFormOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={()=>setIsClientFormOpen(false)} className="absolute inset-0 bg-slate-900/10 backdrop-blur-xl" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-xl glass-card rounded-3xl md:rounded-[64px] p-6 md:p-12 lg:p-16 shadow-2xl overflow-y-auto max-h-[90vh] aura-glow">
+              <div className="flex justify-between items-center mb-8 md:mb-10">
+                <h2 className="text-xl md:text-3xl font-bold text-gradient">{editingClientId ? 'Editar Cliente' : 'Novo Cliente'}</h2>
+                <button onClick={()=>setIsClientFormOpen(false)} className="p-3 md:p-4 rounded-2xl bg-slate-50 hover:bg-slate-100 transition-colors">
+                  <X className="w-5 h-5 md:w-6 md:h-6 text-slate-400" />
+                </button>
+              </div>
+              <form onSubmit={handleAddClient} className="space-y-6 md:space-y-8">
+                <div className="space-y-4">
+                  <input required placeholder="Nome do Cliente / Projeto" className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-indigo-500/20 focus:bg-white transition-all outline-none font-bold placeholder:text-slate-300 text-sm md:text-base" value={newClient.name} onChange={e=>setNewClient({...newClient, name: e.target.value})} />
+                  
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Gestor de Tráfego</span>
+                    <select className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-indigo-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 text-xs md:text-sm appearance-none cursor-pointer" value={newClient.trafficManagerId} onChange={e=>setNewClient({...newClient, trafficManagerId: e.target.value})}>
+                      <option value="">Nenhum</option>
+                      {responsibles.filter(r => r.role === 'Traffic').map(r => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-2">Social Media</span>
+                    <select className="w-full px-6 md:px-8 py-4 md:py-5 rounded-2xl md:rounded-3xl bg-slate-50/50 border border-transparent focus:border-indigo-500/20 focus:bg-white transition-all outline-none font-semibold text-slate-600 text-xs md:text-sm appearance-none cursor-pointer" value={newClient.socialMediaId} onChange={e=>setNewClient({...newClient, socialMediaId: e.target.value})}>
+                      <option value="">Nenhuma</option>
+                      {responsibles.filter(r => r.role === 'Social').map(r => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button type="submit" className="w-full py-4 md:py-5 btn-premium font-bold text-sm md:text-base shadow-2xl shadow-indigo-500/10 mt-4 group">
+                  <div className="flex items-center justify-center gap-2">
+                    {editingClientId ? 'Atualizar Cliente' : 'Cadastrar Cliente'} 
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
               </form>

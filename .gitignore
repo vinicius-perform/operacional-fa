@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# exports
+diario_export_*.csv
+export_diario_*.json
+export_diary.mjs

@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Operacional | Client Management",
-  description: "A premium operational notes system for elite client follow-up.",
+  title: "Operacional | FA",
+  description: "A premium operational notes system for elite follow-up.",
 };
 
 export default function RootLayout({
